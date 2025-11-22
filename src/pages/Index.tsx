@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Activity, ArrowRight, TrendingUp } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,6 +8,9 @@ import DataTable from "@/components/DataTable";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
+import { API_BASE } from "@/config/api";
+import MainNav from "@/components/MainNav";
+
 const SENTIMENT_COLORS = {
   Positive: "hsl(var(--positive))",
   Negative: "hsl(var(--negative))",
@@ -15,27 +18,52 @@ const SENTIMENT_COLORS = {
 };
 import PromptInput from "@/components/PromptInput";
 import ViewToggle from "@/components/ViewToggle";
-import {
-  sampleAsthmaMentions,
-  sampleMentionsCount,
-  sourceSplit,
-  geographySplit,
-  stakeholderSplit,
-  drugClassSplit,
-  countryDrugClassMap,
-  sentimentPieData,
-} from "@/data/mockData";
+import { useAppSelector } from "@/store/hooks";
 import TopThemes from "@/components/TopThemes";
 import { toast } from "sonner";
 
 const Index = () => {
   const [view, setView] = useState<"table" | "chart">("table");
   const [filteredData, setFilteredData] = useState({
-    source: sourceSplit,
-    geography: geographySplit,
-    stakeholder: stakeholderSplit,
-    drugClass: drugClassSplit,
+    source: [],
+    geography: [],
+    stakeholder: [],
+    drugClass: [],
   });
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const [sourceRes, geographyRes, stakeholderRes, drugClassRes] =
+          await Promise.all([
+            fetch(`${API_BASE}/api/source-split`),
+            fetch(`${API_BASE}/api/geography-split`),
+            fetch(`${API_BASE}/api/stakeholder-split`),
+            fetch(`${API_BASE}/api/drug-class-split`),
+          ]);
+        const [source, geography, stakeholder, drugClass] = await Promise.all([
+          sourceRes.ok ? sourceRes.json() : [],
+          geographyRes.ok ? geographyRes.json() : [],
+          stakeholderRes.ok ? stakeholderRes.json() : [],
+          drugClassRes.ok ? drugClassRes.json() : [],
+        ]);
+        setFilteredData({
+          source: Array.isArray(source) ? source : [],
+          geography: Array.isArray(geography) ? geography : [],
+          stakeholder: Array.isArray(stakeholder) ? stakeholder : [],
+          drugClass: Array.isArray(drugClass) ? drugClass : [],
+        });
+      } catch {
+        setFilteredData({
+          source: [],
+          geography: [],
+          stakeholder: [],
+          drugClass: [],
+        });
+      }
+    };
+    fetchAll();
+  }, []);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
 
   // Backend-driven results (from /query) -- mirrors PatientJourney behavior
@@ -44,7 +72,7 @@ const Index = () => {
   const [backendLoading, setBackendLoading] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
 
-  const pieChartCount = "123,340";
+  // Move this line below the declaration of `counts`
 
   const handlePromptSubmit = async (prompt: string) => {
     // Use backend to generate query + results, similarly to PatientJourney
@@ -58,7 +86,7 @@ const Index = () => {
     setBackendHeading(null);
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/query", {
+      const res = await fetch(`${API_BASE}/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
@@ -93,34 +121,51 @@ const Index = () => {
     }
   };
 
+  const counts = useAppSelector((s) => s.sampleCounts || {});
+
+  const [sentimentPieData, setSentimentPieData] = useState({
+    Positive: { count: 0, percentage: 0 },
+    Negative: { count: 0, percentage: 0 },
+    Neutral: { count: 0, percentage: 0 },
+  });
+  useEffect(() => {
+    fetch(`${API_BASE}/api/sentiment-pie-data`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && typeof data === "object") setSentimentPieData(data);
+      });
+  }, []);
+  const pieChartCount = (counts.asthmaDrugMentions ?? 0).toLocaleString();
+
   const metricCardsConfig = [
     {
       title: "Countries in Scope",
-      value: sampleMentionsCount.countriesInScope.length,
-      description: sampleMentionsCount.countriesInScope.join(", "),
+      value: counts.countriesInScope ? counts.countriesInScope.length : 0,
+      description: counts.countriesInScope
+        ? counts.countriesInScope.join(", ")
+        : "",
     },
     {
       title: "Asthma Sources",
-      value: sampleMentionsCount.asthmaSources,
+      value: counts.asthmaSources ?? 0,
       description: "Across all channels",
     },
     {
       title: "Total Asthma Conversations",
-      value: sampleMentionsCount.totalAsthmaConversations,
+      value: counts.totalAsthmaConversations ?? 0,
       description: "Mentions across all platforms",
     },
     {
       title: "Asthma Drug Mentions",
-      value: sampleMentionsCount.asthmaDrugMentions,
+      value: counts.asthmaDrugMentions ?? 0,
       description: "Across all drugs",
     },
     {
       title: "Biologics Drug Mentions",
-      value: sampleMentionsCount.biologicsDrugMentions,
+      value: counts.biologicsDrugMentions ?? 0,
       description: "Mentions for biologic treatments",
     },
   ];
-
 
   return (
     <div className="min-h-screen bg-background">
@@ -129,16 +174,20 @@ const Index = () => {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div>
-              <img src="https://multiplierai.co/se/multiplier_logo.png" alt="multiplier_logo" className="h-18 w-44" />
-
+              <img
+                src="https://multiplierai.co/se/multiplier_logo.png"
+                alt="multiplier_logo"
+                className="h-18 w-44"
+              />
             </div>
           </div>
-          <Link to="/landing-page">
-            <Button className="gap-2">
-              Asthma Drug Mentions
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
+          <div className="flex items-center gap-3">
+            {/* Main navigation (centralized) */}
+            {/* Reusable component provides active styling */}
+            {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+            {/* @ts-ignore */}
+            <MainNav />
+          </div>
         </div>
       </header>
 
@@ -148,7 +197,7 @@ const Index = () => {
         {/* <div className="max-w-md">
           <MetricCard
             title="Total Asthma Drug Mentions"
-            value={sampleAsthmaMentions}
+            value={counts.asthmaDrugMentions ?? 0}
             icon={Activity}
             description="Across all sources and stakeholders"
           />
@@ -169,7 +218,9 @@ const Index = () => {
         {/* Sentiment Pie Chart and Top Themes side by side */}
         <div className="my-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
           <div>
-            <h3 className="text-lg font-semibold mb-2">Sentiment Distribution</h3>
+            <h3 className="text-lg font-semibold mb-2">
+              Sentiment Distribution
+            </h3>
 
             <div className="bg-card border rounded-md p-4">
               <ChartContainer
@@ -184,14 +235,22 @@ const Index = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={Object.entries(sentimentPieData).map(([key, val]) => ({ name: key, value: val.count, fill: SENTIMENT_COLORS[key] }))}
+                        data={Object.entries(sentimentPieData).map(
+                          ([key, val]) => ({
+                            name: key,
+                            value: val.count,
+                            fill: SENTIMENT_COLORS[key],
+                          })
+                        )}
                         dataKey="value"
                         cx="50%"
                         cy="50%"
                         innerRadius={70}
                         outerRadius={120}
                         labelLine={false}
-                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        label={({ name, percent }) =>
+                          `${name}: ${(percent * 100).toFixed(0)}%`
+                        }
                       >
                         {Object.entries(sentimentPieData).map(([key, val]) => (
                           <Cell
@@ -211,7 +270,9 @@ const Index = () => {
                     <div className="text-2xl font-extrabold leading-tight text-foreground">
                       {pieChartCount}
                     </div>
-                    <div className="text-sm text-muted-foreground">Drug Mentions</div>
+                    <div className="text-sm text-muted-foreground">
+                      Drug Mentions
+                    </div>
                   </div>
                 </div>
               </ChartContainer>
@@ -219,8 +280,11 @@ const Index = () => {
               {/* Short description and legend under the chart */}
               <div className="mt-4">
                 <p className="text-sm text-muted-foreground mb-3">
-                  Sentiment distribution shows the breakdown of conversation sentiment across the dataset. The donut visual highlights the relative
-                  proportion of Positive, Negative and Neutral mentions. Use the legend below for exact counts and percentages.
+                  Sentiment distribution shows the breakdown of conversation
+                  sentiment across the dataset. The donut visual highlights the
+                  relative proportion of Positive, Negative and Neutral
+                  mentions. Use the legend below for exact counts and
+                  percentages.
                 </p>
 
                 <div className="flex flex-col gap-2">
@@ -228,12 +292,18 @@ const Index = () => {
                     <div key={key} className="flex items-center gap-3">
                       <span
                         className="inline-block h-3 w-3 rounded-full"
-                        style={{ background: SENTIMENT_COLORS[key as keyof typeof SENTIMENT_COLORS] }}
+                        style={{
+                          background:
+                            SENTIMENT_COLORS[
+                              key as keyof typeof SENTIMENT_COLORS
+                            ],
+                        }}
                       />
                       <div className="flex-1 text-sm">
                         <div className="font-medium text-foreground">{key}</div>
                         <div className="text-muted-foreground text-xs">
-                          {val.count.toLocaleString()} mentions • {val.percentage}%
+                          {val.count.toLocaleString()} mentions •{" "}
+                          {val.percentage}%
                         </div>
                       </div>
                     </div>
@@ -243,18 +313,16 @@ const Index = () => {
             </div>
           </div>
           <div>
-
             <div className="flex items-center gap-2 text-lg mb-2">
               {/* <TrendingUp className="h-5 w-5 text-primary" /> */}
-              <h3 className="text-lg font-semibold ">Top Themes / Reasons / Trending Topics</h3>
+              <h3 className="text-lg font-semibold ">
+                Top Themes / Reasons / Trending Topics
+              </h3>
             </div>
 
             <TopThemes />
           </div>
         </div>
-
-
-
       </main>
     </div>
   );

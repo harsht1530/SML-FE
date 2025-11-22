@@ -8,25 +8,66 @@ import DataTable from "@/components/DataTable";
 import ChartView from "@/components/ChartView";
 import PromptInput from "@/components/PromptInput";
 import ViewToggle from "@/components/ViewToggle";
-import {
-  sampleAsthmaMentions,
-  sampleMentionsCount,
-  sourceSplit,
-  geographySplit,
-  stakeholderSplit,
-  drugClassSplit,
-  countryDrugClassMap,
-} from "@/data/mockData";
+import { useAppSelector } from "@/store/hooks";
+import MainNav from "@/components/MainNav";
+import { useEffect } from "react";
+import { API_BASE } from "@/config/api";
 import { toast } from "sonner";
 
 const LandingPage = () => {
   const [view, setView] = useState<"table" | "chart">("table");
   const [filteredData, setFilteredData] = useState({
-    source: sourceSplit,
-    geography: geographySplit,
-    stakeholder: stakeholderSplit,
-    drugClass: drugClassSplit,
+    source: [],
+    geography: [],
+    stakeholder: [],
+    drugClass: [],
   });
+
+  const [countryDrugClassMap, setCountryDrugClassMap] = useState({});
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const [
+          sourceRes,
+          geographyRes,
+          stakeholderRes,
+          drugClassRes,
+          countryDrugClassRes,
+        ] = await Promise.all([
+          fetch(`${API_BASE}/api/source-split`),
+          fetch(`${API_BASE}/api/geography-split`),
+          fetch(`${API_BASE}/api/stakeholder-split`),
+          fetch(`${API_BASE}/api/drug-class-split`),
+          fetch(`${API_BASE}/api/country-drug-class-map`),
+        ]);
+        const [source, geography, stakeholder, drugClass, countryDrugClass] =
+          await Promise.all([
+            sourceRes.ok ? sourceRes.json() : [],
+            geographyRes.ok ? geographyRes.json() : [],
+            stakeholderRes.ok ? stakeholderRes.json() : [],
+            drugClassRes.ok ? drugClassRes.json() : [],
+            countryDrugClassRes.ok ? countryDrugClassRes.json() : {},
+          ]);
+        setFilteredData({
+          source: Array.isArray(source) ? source : [],
+          geography: Array.isArray(geography) ? geography : [],
+          stakeholder: Array.isArray(stakeholder) ? stakeholder : [],
+          drugClass: Array.isArray(drugClass) ? drugClass : [],
+        });
+        setCountryDrugClassMap(countryDrugClass || {});
+      } catch {
+        setFilteredData({
+          source: [],
+          geography: [],
+          stakeholder: [],
+          drugClass: [],
+        });
+        setCountryDrugClassMap({});
+      }
+    };
+    fetchAll();
+  }, []);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
 
   // Backend-driven results (from /query) -- mirrors PatientJourney behavior
@@ -47,7 +88,7 @@ const LandingPage = () => {
     setBackendHeading(null);
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/query", {
+      const res = await fetch(`${API_BASE}/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
@@ -82,70 +123,58 @@ const LandingPage = () => {
     }
   };
 
+  const counts = useAppSelector((s) => s.sampleCounts || {});
+
+  const sampleAsthmaMentions = counts.asthmaDrugMentions ?? 0;
+
   const metricCardsConfig = [
     {
       title: "Countries in Scope",
-      value: sampleMentionsCount.countriesInScope.length,
-      description: sampleMentionsCount.countriesInScope.join(", "),
+      value: counts.countriesInScope ? counts.countriesInScope.length : 0,
+      description: counts.countriesInScope
+        ? counts.countriesInScope.join(", ")
+        : "",
     },
     {
       title: "Asthma Sources",
-      value: sampleMentionsCount.asthmaSources,
+      value: counts.asthmaSources ?? 0,
       description: "Across all channels",
     },
     {
       title: "Total Asthma Conversations",
-      value: sampleMentionsCount.totalAsthmaConversations,
+      value: counts.totalAsthmaConversations ?? 0,
       description: "Mentions across all platforms",
     },
     {
       title: "Asthma Drug Mentions",
-      value: sampleMentionsCount.asthmaDrugMentions,
+      value: counts.asthmaDrugMentions ?? 0,
       description: "Across all drugs",
     },
     {
       title: "Biologics Drug Mentions",
-      value: sampleMentionsCount.biologicsDrugMentions,
+      value: counts.biologicsDrugMentions ?? 0,
       description: "Mentions for biologic treatments",
     },
   ];
 
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-<header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-  <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-    
-    {/* Logo */}
-    <div className="flex items-center gap-3">
-      <img
-        src="https://multiplierai.co/se/multiplier_logo.png"
-        alt="multiplier_logo"
-        className="h-18 w-44"
-      />
-    </div>
+      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          {/* Logo */}
+          <div className="flex items-center gap-3">
+            <img
+              src="https://multiplierai.co/se/multiplier_logo.png"
+              alt="multiplier_logo"
+              className="h-18 w-44"
+            />
+          </div>
 
-    {/* Buttons */}
-    <div className="flex items-center gap-4">
-      <Link to="/">
-        <Button variant="outline">
-          <ArrowLeft className="h-4 w-4" />
-          Back to Landing
-        </Button>
-      </Link>
-
-      <Link to="/patient-journey">
-        <Button>
-          Patient Journey
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-      </Link>
-    </div>
-
-  </div>
-</header>
-
+          {/* Main navigation */}
+          <MainNav />
+        </div>
+      </header>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8 space-y-8">
@@ -153,7 +182,7 @@ const LandingPage = () => {
         <div className="max-w-md">
           <MetricCard
             title="Total Asthma Drug Mentions"
-            value={sampleAsthmaMentions}
+            value={counts.asthmaDrugMentions ?? 0}
             icon={Activity}
             description="Across all sources and stakeholders"
           />
@@ -171,7 +200,6 @@ const LandingPage = () => {
           ))}
         </div> */}
 
-
         {/* Prompt Input */}
         {/* <div className="bg-card p-6 rounded-2xl border-2 shadow-lg">
           <h2 className="text-xl font-semibold mb-4 text-foreground">Ask a Question</h2>
@@ -183,11 +211,15 @@ const LandingPage = () => {
 
         {/* Data Tabs (replaced by backend results when present) */}
         {backendLoading ? (
-          <div className="bg-card p-6 rounded-2xl border-2">Loading results from backend...</div>
+          <div className="bg-card p-6 rounded-2xl border-2">
+            Loading results from backend...
+          </div>
         ) : backendResults ? (
           <div className="bg-card p-6 rounded-2xl border-2">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">{backendHeading}</h3>
+              <h3 className="text-lg font-semibold text-foreground">
+                {backendHeading}
+              </h3>
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
@@ -203,7 +235,11 @@ const LandingPage = () => {
             </div>
 
             {view === "table" ? (
-              <DataTable data={backendResults} columns={["drug_name", "mentions", "sentiment"]} sentimentColumns />
+              <DataTable
+                data={backendResults}
+                columns={["drug_name", "mentions", "sentiment"]}
+                sentimentColumns
+              />
             ) : (
               <ChartView data={backendResults} type="bar" />
             )}
@@ -212,17 +248,27 @@ const LandingPage = () => {
           <Tabs defaultValue="source" className="space-y-6">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <TabsList className="bg-muted p-1 h-auto">
-                <TabsTrigger value="source" className="rounded-lg">Source</TabsTrigger>
-                <TabsTrigger value="geography" className="rounded-lg">Geography</TabsTrigger>
-                <TabsTrigger value="stakeholder" className="rounded-lg">Stakeholder</TabsTrigger>
-                <TabsTrigger value="drugClass" className="rounded-lg">Drug Class</TabsTrigger>
+                <TabsTrigger value="source" className="rounded-lg">
+                  Source
+                </TabsTrigger>
+                <TabsTrigger value="geography" className="rounded-lg">
+                  Geography
+                </TabsTrigger>
+                <TabsTrigger value="stakeholder" className="rounded-lg">
+                  Stakeholder
+                </TabsTrigger>
+                <TabsTrigger value="drugClass" className="rounded-lg">
+                  Drug Class
+                </TabsTrigger>
               </TabsList>
               <ViewToggle view={view} onViewChange={setView} />
             </div>
 
             <TabsContent value="source" className="space-y-4">
               <div className="bg-card p-6 rounded-2xl border-2">
-                <h3 className="text-lg font-semibold mb-4 text-foreground">Source Split</h3>
+                <h3 className="text-lg font-semibold mb-4 text-foreground">
+                  Source Split
+                </h3>
                 {view === "table" ? (
                   <DataTable
                     data={filteredData.source}
@@ -237,25 +283,42 @@ const LandingPage = () => {
 
             <TabsContent value="geography" className="space-y-4">
               <div className="bg-card p-6 rounded-2xl border-2">
-                <h3 className="text-lg font-semibold mb-4 text-foreground">Geography Split</h3>
+                <h3 className="text-lg font-semibold mb-4 text-foreground">
+                  Geography Split
+                </h3>
                 {selectedCountry ? (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <h4 className="text-md font-semibold text-foreground">
                         Drug Class Split for {selectedCountry}
                       </h4>
-                      <Button size="sm" variant="outline" onClick={() => setSelectedCountry(null)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelectedCountry(null)}
+                      >
                         Back
                       </Button>
                     </div>
                     {view === "table" ? (
                       <DataTable
-                        data={countryDrugClassMap[selectedCountry] || []}
+                        data={
+                          (countryDrugClassMap as any)[
+                            selectedCountry as string
+                          ] || []
+                        }
                         columns={["type", "mentions", "sentiment"]}
                         sentimentColumns
                       />
                     ) : (
-                      <ChartView data={countryDrugClassMap[selectedCountry] || []} type="bar" />
+                      <ChartView
+                        data={
+                          (countryDrugClassMap as any)[
+                            selectedCountry as string
+                          ] || []
+                        }
+                        type="bar"
+                      />
                     )}
                   </>
                 ) : (
@@ -278,7 +341,9 @@ const LandingPage = () => {
 
             <TabsContent value="stakeholder" className="space-y-4">
               <div className="bg-card p-6 rounded-2xl border-2">
-                <h3 className="text-lg font-semibold mb-4 text-foreground">Stakeholder Split</h3>
+                <h3 className="text-lg font-semibold mb-4 text-foreground">
+                  Stakeholder Split
+                </h3>
                 {view === "table" ? (
                   <DataTable
                     data={filteredData.stakeholder}
@@ -293,7 +358,9 @@ const LandingPage = () => {
 
             <TabsContent value="drugClass" className="space-y-4">
               <div className="bg-card p-6 rounded-2xl border-2">
-                <h3 className="text-lg font-semibold mb-4 text-foreground">Drug Class Split</h3>
+                <h3 className="text-lg font-semibold mb-4 text-foreground">
+                  Drug Class Split
+                </h3>
                 {view === "table" ? (
                   <DataTable
                     data={filteredData.drugClass}

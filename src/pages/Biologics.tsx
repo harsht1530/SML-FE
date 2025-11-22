@@ -18,11 +18,10 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { API_BASE } from "@/config/api";
+import { useAppSelector } from "@/store/hooks";
 import MainNav from "@/components/MainNav";
-import PatientSubNav from "@/components/PatientSubNav";
-import { useLocation } from "react-router-dom";
 
-const DrugStakeholder = () => {
+const Biologics = () => {
   const [view, setView] = useState<"table" | "chart">("table");
   // Country filter state — data file (`drugStakeholderData.js`) contains country keys like "All", "United Kingdom", etc.
   const [selectedCountry, setSelectedCountry] = useState<string>("All");
@@ -78,14 +77,27 @@ const DrugStakeholder = () => {
       : dataForCountry
     : [];
 
-  // Build stakeholder-columns table from normalized drugs list
+  // Get biologics list from Redux sampleCounts. Support a few possible key names.
+  const counts = useAppSelector((s) => (s as any).sampleCounts || {});
+  const biologicsList: string[] =
+    counts?.Biologics || counts?.biologics || counts?.biologicsList || [];
+  const biologicsSet = new Set((biologicsList || []).map((b: string) => b));
+
+  // Filter drugsList to only include biologics
+  const biologicsDrugsList = drugsList.filter((d) =>
+    biologicsSet.has(d.drugName)
+  );
+
+  // Build stakeholder-columns table from biologics-only drugs list
   const stakeholders: string[] = Array.from(
     new Set(
-      drugsList.flatMap((d) => (d.attributes || []).map((a) => a.stakeholder))
+      biologicsDrugsList.flatMap((d) =>
+        (d.attributes || []).map((a) => a.stakeholder)
+      )
     )
   );
 
-  const tableRows = drugsList.map((d) => {
+  const tableRows = biologicsDrugsList.map((d) => {
     const row: any = { drugName: d.drugName };
     stakeholders.forEach((s) => {
       const attr = (d.attributes || []).find((a) => a.stakeholder === s);
@@ -111,13 +123,13 @@ const DrugStakeholder = () => {
   useEffect(() => setFilteredJourney(tableRows), [tableRows]);
   const [selectedStage, setSelectedStage] = useState<string | null>(null); // selected drugName
 
-  // Total mentions across all drugs/stakeholders (for selected country)
-  const totalMentions = drugsList
+  // Total mentions across biologics drugs/stakeholders (for selected country)
+  const totalMentions = biologicsDrugsList
     .flatMap((d) => (d.attributes || []).map((a) => a.mentions))
     .reduce((sum, v) => sum + (v || 0), 0);
 
-  // Aggregated numeric sentiment per drug for charts
-  const chartData = drugsList.map((d) => ({
+  // Aggregated numeric sentiment per biologics drug for charts
+  const chartData = biologicsDrugsList.map((d) => ({
     type: d.drugName,
     Positive: (d.attributes || []).reduce((s, a) => s + (a.Positive || 0), 0),
     Negative: (d.attributes || []).reduce((s, a) => s + (a.Negative || 0), 0),
@@ -180,9 +192,7 @@ const DrugStakeholder = () => {
           <div className="flex items-center gap-3">
             <Activity className="h-8 w-8 text-primary" />
             <div>
-              <h1 className="text-2xl font-bold text-foreground">
-                Asthma Drug Analysis
-              </h1>
+              <h1 className="text-2xl font-bold text-foreground">Biologics</h1>
               <p className="text-sm text-muted-foreground">
                 Patient Journey Deep Dive
               </p>
@@ -195,25 +205,12 @@ const DrugStakeholder = () => {
             </Button>
           </Link> */}
 
+          {/* Main fixed navigation — clicking goes to dashboard ('/') */}
           <div className="flex items-center gap-3">
             <MainNav />
           </div>
         </div>
       </header>
-      {/* Show Patient Journey subnav when requested via ?active=/patient-journey */}
-      {(() => {
-        try {
-          const params = new URLSearchParams(
-            (useLocation() as any).search || ""
-          );
-          if (params.get("active") === "/patient-journey") {
-            return <PatientSubNav activeSub="drug" />;
-          }
-        } catch (e) {
-          /* ignore */
-        }
-        return null;
-      })()}
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
@@ -367,4 +364,4 @@ const DrugStakeholder = () => {
   );
 };
 
-export default DrugStakeholder;
+export default Biologics;

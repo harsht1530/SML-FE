@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAppSelector } from "@/store/hooks"; // Adjust the path based on your project structure
 import { Link } from "react-router-dom";
 import { Activity, ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,13 +9,24 @@ import ChartView from "@/components/ChartView";
 import PromptInput from "@/components/PromptInput";
 import ViewToggle from "@/components/ViewToggle";
 import InsightsSidebar from "@/components/InsightsSidebar";
-import { sampleAsthmaMentions, patientJourney, patientJourneyStageRemarks } from "@/data/mockData";
+import { useEffect } from "react";
+import { API_BASE } from "@/config/api";
 import { toast } from "sonner";
 
 const StakeholderAttribute = () => {
   const [view, setView] = useState<"table" | "chart">("table");
-  const [filteredJourney, setFilteredJourney] = useState(patientJourney);
+  const [filteredJourney, setFilteredJourney] = useState<any[]>([]);
+  const sampleCounts = useAppSelector((s) => s.sampleCounts);
+  const sampleAsthmaMentions =
+    sampleCounts?.asthmaDrugMentions ||
+    sampleCounts?.totalAsthmaConversations ||
+    0;
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
+  const [patientRemarks, setPatientRemarks] = useState<Record<
+    string,
+    any
+  > | null>(null);
+  const [remarksLoading, setRemarksLoading] = useState(false);
 
   const [backendResults, setBackendResults] = useState<any[] | null>(null);
   const [backendLoading, setBackendLoading] = useState(false);
@@ -22,13 +34,15 @@ const StakeholderAttribute = () => {
   const [backendHeading, setBackendHeading] = useState<string | null>(null);
 
   const handlePromptSubmit = async (prompt: string) => {
-    toast.success("Analyzing patient journey...", { description: `"${prompt}"` });
+    toast.success("Analyzing patient journey...", {
+      description: `"${prompt}"`,
+    });
     setBackendError(null);
     setBackendLoading(true);
     setBackendResults(null);
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/query", {
+      const res = await fetch(`${API_BASE}/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
@@ -62,6 +76,43 @@ const StakeholderAttribute = () => {
     }
   };
 
+  useEffect(() => {
+    // fetch patient journey data from backend
+    const fetchJourney = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/patient-journey`);
+        if (!res.ok) {
+          setFilteredJourney([]);
+          return;
+        }
+        const body = await res.json();
+        setFilteredJourney(Array.isArray(body) ? body : []);
+      } catch {
+        setFilteredJourney([]);
+      }
+    };
+    fetchJourney();
+
+    const fetchRemarks = async () => {
+      setRemarksLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/patient-journey-remarks`);
+        if (!res.ok) {
+          setPatientRemarks(null);
+          setRemarksLoading(false);
+          return;
+        }
+        const body = await res.json();
+        setPatientRemarks(body || {});
+      } catch (e) {
+        setPatientRemarks(null);
+      } finally {
+        setRemarksLoading(false);
+      }
+    };
+    fetchRemarks();
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -70,8 +121,12 @@ const StakeholderAttribute = () => {
           <div className="flex items-center gap-3">
             <Activity className="h-8 w-8 text-primary" />
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Asthma Drug Analysis</h1>
-              <p className="text-sm text-muted-foreground">Patient Journey Deep Dive</p>
+              <h1 className="text-2xl font-bold text-foreground">
+                Asthma Drug Analysis
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Patient Journey Deep Dive
+              </p>
             </div>
           </div>
           {/* <Link to="/">
@@ -89,7 +144,7 @@ const StakeholderAttribute = () => {
 
           {/* Buttons */}
           <div className="flex items-center gap-4">
-            <Link to="/landing-page">
+            <Link to="/drug-mentions">
               <Button variant="outline">
                 <ArrowLeft className="h-4 w-4" />
                 Back
@@ -133,7 +188,9 @@ const StakeholderAttribute = () => {
             {/* Patient Journey Data */}
             <div className="bg-card p-6 rounded-2xl border-2">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold text-foreground">Patient Journey Stages</h3>
+                <h3 className="text-lg font-semibold text-foreground">
+                  Patient Journey Stages
+                </h3>
                 <ViewToggle view={view} onViewChange={setView} />
               </div>
 
@@ -143,7 +200,9 @@ const StakeholderAttribute = () => {
                 ) : backendResults ? (
                   <div>
                     <div className="flex items-center justify-between mb-4">
-                      <span className="text-lg font-semibold text-foreground">{backendHeading}</span>
+                      <span className="text-lg font-semibold text-foreground">
+                        {backendHeading}
+                      </span>
                       <div className="flex items-center gap-2">
                         <Button
                           variant="ghost"
@@ -157,28 +216,41 @@ const StakeholderAttribute = () => {
                         </Button>
                       </div>
                     </div>
-                    <DataTable data={backendResults} columns={["drug_name", "mentions", "sentiment"]} sentimentColumns />
+                    <DataTable
+                      data={backendResults}
+                      columns={["drug_name", "mentions", "sentiment"]}
+                      sentimentColumns
+                    />
                   </div>
                 ) : selectedStage ? (
                   <div>
                     <div className="flex items-center justify-between mb-4">
-                      <span className="text-lg font-semibold text-foreground">{selectedStage}</span>
-                      <Button variant="ghost" size="sm" onClick={() => setSelectedStage(null)} className="flex items-center gap-1">
+                      <span className="text-lg font-semibold text-foreground">
+                        {selectedStage}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedStage(null)}
+                        className="flex items-center gap-1"
+                      >
                         <ArrowLeft className="h-4 w-4" /> Back
                       </Button>
                     </div>
 
                     <DataTable
                       data={(() => {
-                        const remarks = patientJourneyStageRemarks[selectedStage];
+                        const remarks = patientRemarks
+                          ? patientRemarks[selectedStage as string]
+                          : null;
                         if (!remarks) return [];
                         const rows: any[] = [];
                         for (let i = 0; i < 5; i++) {
                           rows.push({
                             sentiment: {
-                              Positive: remarks.Positive[i] || "",
-                              Negative: remarks.Negative[i] || "",
-                              Neutral: remarks.Neutral[i] || "",
+                              Positive: remarks.Positive?.[i] || "",
+                              Negative: remarks.Negative?.[i] || "",
+                              Neutral: remarks.Neutral?.[i] || "",
                             },
                           });
                         }
@@ -214,7 +286,9 @@ const StakeholderAttribute = () => {
           {/* Insights Sidebar */}
           <div className="lg:col-span-1">
             <div className="sticky top-24">
-              <h3 className="text-xl font-semibold mb-4 text-foreground">Key Insights</h3>
+              <h3 className="text-xl font-semibold mb-4 text-foreground">
+                Key Insights
+              </h3>
               <InsightsSidebar />
             </div>
           </div>
@@ -225,4 +299,3 @@ const StakeholderAttribute = () => {
 };
 
 export default StakeholderAttribute;
-  
