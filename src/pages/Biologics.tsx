@@ -1,145 +1,55 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { Activity, ArrowLeft, ArrowRight } from "lucide-react";
+import { Activity, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import MetricCard from "@/components/MetricCard";
 import DataTable from "@/components/DataTable";
 import ChartView from "@/components/ChartView";
-import PromptInput from "@/components/PromptInput";
 import ViewToggle from "@/components/ViewToggle";
 import InsightsSidebar from "@/components/InsightsSidebar";
-// country drug data will be fetched from backend API instead of local file
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
-import { toast } from "sonner";
 import { API_BASE } from "@/config/api";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAppSelector } from "@/store/hooks";
 import MainNav from "@/components/MainNav";
+import { toast } from "sonner";
+import BiologicsSubNav from "@/components/BiologicsSubNav";
 
 const Biologics = () => {
   const [view, setView] = useState<"table" | "chart">("table");
-  // Country filter state — data file (`drugStakeholderData.js`) contains country keys like "All", "United Kingdom", etc.
-  const [selectedCountry, setSelectedCountry] = useState<string>("All");
+  const [filteredJourney, setFilteredJourney] = useState<any[]>([]);
+  const sampleCounts = useAppSelector((s) => s.sampleCounts);
+  const sampleAsthmaMentions =
+    sampleCounts?.asthmaDrugMentions ||
+    sampleCounts?.totalAsthmaConversations ||
+    0;
 
-  // fetch country drug data from backend
-  // fetch country drug data from backend
-  const [countryDrugData, setCountryDrugData] = useState<any>({});
-  useEffect(() => {
-    const fetchDrugData = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/drug-stakeholders`);
-        if (!res.ok) {
-          console.error("Failed to fetch drug stakeholder data", res.status);
-          return;
-        }
-        const data = await res.json();
-        setCountryDrugData(data || {});
-        // If the backend returned a country-keyed object and the current selectedCountry
-        // is not present, choose a sensible default so the table updates (prefer 'All').
-        if (data && !Array.isArray(data) && typeof data === "object") {
-          const keys = Object.keys(data);
-          if (!keys.includes(selectedCountry)) {
-            const newSel = keys.includes("All") ? "All" : keys[0];
-            setSelectedCountry(newSel);
-          }
-        }
-      } catch (e) {
-        console.error("Error fetching drug stakeholder data", e);
-      }
-    };
-    fetchDrugData();
-  }, []);
+  const BiologicAsthmaMentions =
+    sampleCounts?.biologicsDrugMentions ||
+    sampleCounts?.biologicsDrugMentions ||
+    0;
 
-  // Data for the currently selected country (fallback to All)
-  let dataForCountry: any[] = [];
-  if (Array.isArray(countryDrugData)) {
-    dataForCountry = countryDrugData;
-  } else {
-    dataForCountry =
-      (countryDrugData &&
-        (countryDrugData[selectedCountry] || countryDrugData["All"])) ||
-      [];
-  }
-
-  // Normalize to a flat list of drugs. The API may return either:
-  // - an array of drug objects: [{ drugName, attributes: [...] }, ...]
-  // - an array of type-groups: [{ asthama_type, drugs: [ { drugName, attributes }, ... ] }, ...]
-  const drugsList: any[] = Array.isArray(dataForCountry)
-    ? dataForCountry.length > 0 &&
-      (dataForCountry[0].drugs || dataForCountry[0].drugName)
-      ? // if first element has `drugs` array, flatten groups
-        dataForCountry.flatMap((g) => (g.drugs ? g.drugs : g))
-      : dataForCountry
-    : [];
-
-  // Get biologics list from Redux sampleCounts. Support a few possible key names.
-  const counts = useAppSelector((s) => (s as any).sampleCounts || {});
-  const biologicsList: string[] =
-    counts?.Biologics || counts?.biologics || counts?.biologicsList || [];
-  const biologicsSet = new Set((biologicsList || []).map((b: string) => b));
-
-  // Filter drugsList to only include biologics
-  const biologicsDrugsList = drugsList.filter((d) =>
-    biologicsSet.has(d.drugName)
-  );
-
-  // Build stakeholder-columns table from biologics-only drugs list
-  const stakeholders: string[] = Array.from(
-    new Set(
-      biologicsDrugsList.flatMap((d) =>
-        (d.attributes || []).map((a) => a.stakeholder)
-      )
-    )
-  );
-
-  const tableRows = biologicsDrugsList.map((d) => {
-    const row: any = { drugName: d.drugName };
-    stakeholders.forEach((s) => {
-      const attr = (d.attributes || []).find((a) => a.stakeholder === s);
-      if (attr) {
-        // store strings "Pct (count)" so DataTable can render them directly
-        row[s] = {
-          Positive: `${attr.PositivePct} (${attr.Positive})`,
-          Negative: `${attr.NegativePct} (${attr.Negative})`,
-          Neutral: `${attr.NeutralPct} (${attr.Neutral})`,
-        };
-      } else {
-        // show 0% (0) when data missing
-        row[s] = { Positive: "0% (0)", Negative: "0% (0)", Neutral: "0% (0)" };
-      }
-    });
-    return row;
-  });
-
-  const [filteredJourney, setFilteredJourney] = useState(tableRows);
-  // Keep filteredJourney in sync when the selected country or tableRows change
-  useEffect(() => setFilteredJourney(tableRows), [selectedCountry]);
-  // Also update filteredJourney when the tableRows change (e.g. after fetching)
-  useEffect(() => setFilteredJourney(tableRows), [tableRows]);
-  const [selectedStage, setSelectedStage] = useState<string | null>(null); // selected drugName
-
-  // Total mentions across biologics drugs/stakeholders (for selected country)
-  const totalMentions = biologicsDrugsList
-    .flatMap((d) => (d.attributes || []).map((a) => a.mentions))
-    .reduce((sum, v) => sum + (v || 0), 0);
-
-  // Aggregated numeric sentiment per biologics drug for charts
-  const chartData = biologicsDrugsList.map((d) => ({
-    type: d.drugName,
-    Positive: (d.attributes || []).reduce((s, a) => s + (a.Positive || 0), 0),
-    Negative: (d.attributes || []).reduce((s, a) => s + (a.Negative || 0), 0),
-    Neutral: (d.attributes || []).reduce((s, a) => s + (a.Neutral || 0), 0),
-  }));
+  const [selectedStage, setSelectedStage] = useState<string | null>(null);
+  const [patientRemarks, setPatientRemarks] = useState<Record<
+    string,
+    any
+  > | null>(null);
+  const [remarksLoading, setRemarksLoading] = useState(false);
 
   const [backendResults, setBackendResults] = useState<any[] | null>(null);
   const [backendLoading, setBackendLoading] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
   const [backendHeading, setBackendHeading] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const params = new URLSearchParams(location.search || "");
+  const showSubnav =
+    location.pathname === "/biologics" || params.get("active") === "/biologics";
+
+  const activeSub = location.pathname.includes("biodrugstakeholder")
+    ? "biodrug"
+    : location.pathname.includes("bioasthematype")
+    ? "bioasthma"
+    : null;
 
   const handlePromptSubmit = async (prompt: string) => {
     toast.success("Analyzing patient journey...", {
@@ -166,7 +76,6 @@ const Biologics = () => {
       }
 
       const body = await res.json();
-      // backend returns { query_used, results, heading }
       const results = body.results || [];
       const heading = body.heading || "Backend Results";
       setBackendResults(results);
@@ -184,6 +93,44 @@ const Biologics = () => {
     }
   };
 
+  useEffect(() => {
+    // 🔹 fetch biologics patient journey data from backend
+    const fetchJourney = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/biologics-patient-journey`);
+        if (!res.ok) {
+          setFilteredJourney([]);
+          return;
+        }
+        const body = await res.json();
+        setFilteredJourney(Array.isArray(body) ? body : []);
+      } catch {
+        setFilteredJourney([]);
+      }
+    };
+    fetchJourney();
+
+    // 🔹 remarks API stays the same
+    const fetchRemarks = async () => {
+      setRemarksLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/patient-journey-remarks`);
+        if (!res.ok) {
+          setPatientRemarks(null);
+          setRemarksLoading(false);
+          return;
+        }
+        const body = await res.json();
+        setPatientRemarks(body || {});
+      } catch (e) {
+        setPatientRemarks(null);
+      } finally {
+        setRemarksLoading(false);
+      }
+    };
+    fetchRemarks();
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -192,25 +139,23 @@ const Biologics = () => {
           <div className="flex items-center gap-3">
             <Activity className="h-8 w-8 text-primary" />
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Biologics</h1>
+              <h1 className="text-2xl font-bold text-foreground">
+                Asthma Drug Analysis
+              </h1>
               <p className="text-sm text-muted-foreground">
                 Patient Journey Deep Dive
               </p>
             </div>
           </div>
-          {/* <Link to="/patient-journey">
-            <Button variant="outline" className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-          </Link> */}
 
-          {/* Main fixed navigation — clicking goes to dashboard ('/') */}
           <div className="flex items-center gap-3">
             <MainNav />
           </div>
         </div>
       </header>
+
+      {/* Biologics sub-navigation (appears under main header) */}
+      {showSubnav && <BiologicsSubNav activeSub={activeSub as any} />}
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
@@ -220,52 +165,19 @@ const Biologics = () => {
             {/* Metric Card */}
             <div className="max-w-md">
               <MetricCard
-                title="Total Asthma Mentions (Stakeholders)"
-                value={totalMentions}
+                title="Total Asthma Drug Mentions"
+                value={BiologicAsthmaMentions}
                 icon={Activity}
-                description="Sum of mentions across drugs and stakeholders"
+                description="Patient journey analysis"
               />
             </div>
 
-            {/* Country filter bar (moved to top after header) */}
-            <div>
-              <div className="container mx-auto px-2 flex justify-start">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm text-muted-foreground">
-                    Country
-                  </label>
-                  <Select
-                    value={selectedCountry}
-                    onValueChange={(val) => setSelectedCountry(val)}
-                  >
-                    <SelectTrigger className="w-56">
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(!Array.isArray(countryDrugData) &&
-                      countryDrugData &&
-                      typeof countryDrugData === "object"
-                        ? Object.keys(countryDrugData)
-                        : ["All"]
-                      ).map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            {/* Drug Stakeholder Data */}
+            {/* Patient Journey Data */}
             <div className="bg-card p-6 rounded-2xl border-2">
               <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <h3 className="text-lg font-semibold text-foreground">
-                    Drug Stakeholder Data
-                  </h3>
-                </div>
+                <h3 className="text-lg font-semibold text-foreground">
+                  Patient Journey Stages
+                </h3>
                 <ViewToggle view={view} onViewChange={setView} />
               </div>
 
@@ -313,38 +225,53 @@ const Biologics = () => {
                       </Button>
                     </div>
 
-                    {/* Show attributes for the selected drug */}
                     <DataTable
                       data={(() => {
-                        const drug = drugsList.find(
-                          (d) => d.drugName === selectedStage
-                        );
-                        if (!drug) return [];
-                        return drug.attributes.map((a) => ({
-                          stakeholder: a.stakeholder,
-                          mentions: a.mentions,
-                          sentiment: {
-                            Positive: a.Positive,
-                            Negative: a.Negative,
-                            Neutral: a.Neutral,
-                          },
-                        }));
+                        const remarks = patientRemarks
+                          ? patientRemarks[selectedStage as string]
+                          : null;
+                        if (!remarks) return [];
+                        const rows: any[] = [];
+                        for (let i = 0; i < 5; i++) {
+                          rows.push({
+                            sentiment: {
+                              Positive: remarks.Positive?.[i] || "",
+                              Negative: remarks.Negative?.[i] || "",
+                              Neutral: remarks.Neutral?.[i] || "",
+                            },
+                          });
+                        }
+                        return rows;
                       })()}
-                      columns={["stakeholder", "mentions", "sentiment"]}
+                      columns={["sentiment"]}
                       sentimentColumns
                     />
                   </div>
                 ) : (
                   <DataTable
-                    data={filteredJourney}
-                    // first column is Drug Name, then one column per stakeholder
-                    columns={["drugName", ...stakeholders]}
+                    data={filteredJourney.map((item) => ({
+                      ...item,
+                      // 🔹 Build "55% (220)" style values for each sentiment
+                      sentiment: {
+                        Positive: `${item.Positive}% (${
+                          item.Positive_count ?? 0
+                        })`,
+                        Negative: `${item.Negative}% (${
+                          item.Negative_count ?? 0
+                        })`,
+                        Neutral: `${item.Neutral}% (${
+                          item.Neutral_count ?? 0
+                        })`,
+                      },
+                    }))}
+                    columns={["stage", "sentiment"]}
                     sentimentColumns
-                    onRowClick={(row) => setSelectedStage(row.drugName)}
+                    onRowClick={(row) => setSelectedStage(row.stage)}
                   />
                 )
               ) : (
-                <ChartView data={chartData} type="bar" />
+                // 🔹 Chart uses percentage fields directly (numbers)
+                <ChartView data={filteredJourney} type="bar" />
               )}
             </div>
           </div>

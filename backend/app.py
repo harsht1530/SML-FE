@@ -514,5 +514,20 @@ def get_stakeholder_split_by_id(id):
 		return jsonify({"error": str(e)}), 400
 
 
+@app.route("/api/biologics-patient-journey", methods=["GET"])
+def get_biologics_patient_journey():
+
+  coll = db["BiologicsPatientJourney"]
+
+  # Exclude _id so frontend doesn't have to handle ObjectId
+  docs = list(
+    coll.find({}, {"_id": 0})
+  )
+
+  # Optional: sort by stage alphabetically or by counts if you want
+  # docs.sort(key=lambda d: d.get("stage", ""))
+
+  return jsonify(docs)
+
 if __name__ == "__main__":
 	app.run(debug=True, port=5000)

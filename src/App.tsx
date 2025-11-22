@@ -22,6 +22,8 @@ import { setGeographySplit } from "./store/geographySlice";
 import { setStakeholderSplit } from "./store/stakeholderSlice";
 import { setPatientJourney } from "./store/patientJourneySlice";
 import { setSentimentPieData } from "./store/sentimentPieSlice";
+import BiologicsDrugStakeholder from "./pages/BiologicsDrugStakeholder";
+import BiologicsAsthmaType from "./pages/BiologicsAsthmaType";
 
 const queryClient = new QueryClient();
 
@@ -202,6 +204,14 @@ const App = () => {
             <Route
               path="/stakeholderattribute"
               element={<StakeholderAttribute />}
+            />
+            <Route
+              path="/biodrugstakeholder"
+              element={<BiologicsDrugStakeholder />}
+            />
+            <Route
+              path="/bioasthematype"
+              element={<BiologicsAsthmaType />}
             />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
